@@ -1,0 +1,21 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Lint Dockerfile') {
+            steps {
+                script {
+                    // Run hadolint and capture the output
+                    def hadolintOutput = sh(returnStdout: true, script: 'docker run --rm -i hadolint/hadolint < Dockerfile || true')
+
+                    // Check if there's any output (indicating an error)
+                    if (hadolintOutput.trim().isEmpty()) {
+                        echo 'All Dockerfiles are OK'
+                    } else {
+                        error "Error: Dockerfile linting failed:\n${hadolintOutput}"
+                    }
+                }
+            }
+        }
+    }
+}
