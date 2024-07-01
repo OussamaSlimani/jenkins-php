@@ -1,1 +1,5 @@
-src/connect.php
+src/.env
+src/composer.json
+src/composer.lock
+src/vendor
+.env
