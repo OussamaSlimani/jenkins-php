@@ -7,6 +7,12 @@ pipeline {
     }
 
     stages {
+
+        stage('Dockerhub Login') {
+            steps {
+                sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
+            }
+        }
         
         stage('Deployment') {
             steps {
@@ -82,5 +88,11 @@ pipeline {
             }
         }
 
+    }
+
+    post {
+        always {
+            sh 'docker logout'
+        }
     }
 }
