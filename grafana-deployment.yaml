@@ -1,21 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: grafana-deployment
+  name: prometheus-deployment
   labels:
-    app: grafana
+    app: prometheus
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: grafana
+      app: prometheus
   template:
     metadata:
       labels:
-        app: grafana
+        app: prometheus
     spec:
       containers:
-        - name: grafana
-          image: grafana/grafana
+        - name: prometheus
+          image: prom/prometheus
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
           ports:
-            - containerPort: 3000
+            - containerPort: 9090
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/prometheus/
+      volumes:
+        - name: config-volume
+          configMap:
+            name: prometheus-config

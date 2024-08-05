@@ -15,8 +15,11 @@ RUN apt-get update && \
 # Copy the current directory contents into the container at /var/www/html
 COPY src/ .
 
-# Expose port 80 to the outside world
+# Expose port 80 for the web application
 EXPOSE 80
+
+# Expose port 9091 for metrics
+EXPOSE 9091
 
 # Set up environment variables from .env file
 COPY src/.env /var/www/html/src/.env

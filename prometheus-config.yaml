@@ -10,9 +10,18 @@ data:
       scrape_interval: 15s
 
     scrape_configs:
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: pod
       - job_name: 'php-app'
         kubernetes_sd_configs:
-          - role: service
+          - role: endpoints
         relabel_configs:
           - source_labels: [__meta_kubernetes_service_label_app]
             action: keep
@@ -20,3 +29,4 @@ data:
           - source_labels: [__meta_kubernetes_service_port_name]
             action: keep
             regex: http-metrics
+s
