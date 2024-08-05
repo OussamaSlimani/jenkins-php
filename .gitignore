@@ -1,0 +1,12 @@
+src/.env
+src/composer.json
+src/composer.lock
+src/vendor
+vendor
+composer.lock
+composer.json
+phpstan_errors.txt
+tmp-phpstan
+Jenkinsfile copy
+Jenkinsfile copy 2
+Jenkinsfile copy 3

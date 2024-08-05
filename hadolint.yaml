@@ -1,0 +1,5 @@
+failure-threshold: warning
+format: tty
+ignored:
+  - DL4006
+  - DL3008
