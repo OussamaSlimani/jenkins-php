@@ -114,8 +114,9 @@ pipeline {
                 script {
                     echo 'Fetching URLs for Prometheus and Grafana...'
                     try {
-                        def prometheusUrl = sh(script: 'minikube service prometheus --url', returnStdout: true).trim()
-                        def grafanaUrl = sh(script: 'minikube service grafana --url', returnStdout: true).trim()
+                        // Fetch URLs for Prometheus and Grafana in the monitoring namespace
+                        def prometheusUrl = sh(script: 'minikube service prometheus -n monitoring --url', returnStdout: true).trim()
+                        def grafanaUrl = sh(script: 'minikube service grafana -n monitoring --url', returnStdout: true).trim()
                         
                         echo "Prometheus is accessible at: ${prometheusUrl}"
                         echo "Grafana is accessible at: ${grafanaUrl}"
