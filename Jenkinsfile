@@ -44,6 +44,7 @@ pipeline {
             }
         }
 
+
         stage('Dockerhub Login') {
             steps {
                 sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
@@ -58,7 +59,7 @@ pipeline {
                 }
             }
         }
-
+        
         stage('Deployment') {
             steps {
                 script {
@@ -69,13 +70,8 @@ pipeline {
                         sh 'minikube start --driver=docker'
                         sh 'eval $(minikube docker-env)'       
                         sh 'docker pull oussamaslimani2001/flare-bank:testing'
-
-                        // Update Helm chart repository
-                        sh 'helm repo add my-charts https://example.com/charts'
-                        sh 'helm repo update'
-
-                        // Install or upgrade Helm chart
-                        sh 'helm upgrade --install flare-bank my-charts/flare-bank --set image.tag=testing'
+                        sh 'kubectl apply -f app-deployment.yaml --validate=false'
+                        sh 'kubectl apply -f app-service.yaml --validate=false'
 
                         timeout(time: 10, unit: 'MINUTES') {
                             waitUntil {
@@ -103,34 +99,47 @@ pipeline {
                 script {
                     echo 'Setting up monitoring with Prometheus and Grafana...'
                     try {
-                        // Update Helm chart repository for monitoring tools
-                        sh 'helm repo add monitoring https://prometheus-community.github.io/helm-charts'
+                        // Ensure Minikube is running
+                        sh 'minikube start'
+
+                        // Install Helm
+                        sh 'curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash'
+
+                        // Add Prometheus and Grafana Helm repositories
+                        sh 'helm repo add prometheus-community https://prometheus-community.github.io/helm-charts'
+                        sh 'helm repo add grafana https://grafana.github.io/helm-charts'
                         sh 'helm repo update'
 
-                        // Install Prometheus and Grafana using Helm
-                        sh 'helm upgrade --install prometheus monitoring/prometheus'
-                        sh 'helm upgrade --install grafana monitoring/grafana'
+                        // Create namespace for monitoring
+                        sh 'kubectl create namespace monitoring'
 
-                        timeout(time: 5, unit: 'MINUTES') {
+                        // Install Prometheus
+                        sh 'helm install prometheus prometheus-community/prometheus --namespace monitoring'
+
+                        // Install Grafana
+                        sh 'helm install grafana grafana/grafana --namespace monitoring'
+
+                        // Wait until Prometheus and Grafana pods are running
+                        timeout(time: 10, unit: 'MINUTES') {
                             waitUntil {
-                                def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return prometheusReady.contains('true')
+                                def prometheusReady = sh(script: 'kubectl get pods --namespace monitoring -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                def grafanaReady = sh(script: 'kubectl get pods --namespace monitoring -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                return prometheusReady.contains('true') && grafanaReady.contains('true')
                             }
                         }
-                        echo 'Prometheus is ready.'
+                        echo 'Prometheus and Grafana are ready.'
 
-                        timeout(time: 5, unit: 'MINUTES') {
-                            waitUntil {
-                                def grafanaReady = sh(script: 'kubectl get pods -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return grafanaReady.contains('true')
-                            }
-                        }
-                        echo 'Grafana is ready.'
+                        // Access Prometheus and Grafana
+                        sh 'kubectl --namespace monitoring port-forward svc/prometheus-server 9090:80 &> /dev/null &'
+                        sh 'kubectl --namespace monitoring port-forward svc/grafana 3000:80 &> /dev/null &'
 
-                        def prometheusUrl = sh(script: 'minikube service prometheus-server --url', returnStdout: true).trim()
-                        def grafanaUrl = sh(script: 'minikube service grafana --url', returnStdout: true).trim()
-                        echo "Prometheus is accessible at: ${prometheusUrl}"
-                        echo "Grafana is accessible at: ${grafanaUrl}"
+                        // Get Grafana admin password
+                        def grafanaPassword = sh(script: 'kubectl get secret --namespace monitoring grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo', returnStdout: true).trim()
+                        echo "Grafana Admin Password: ${grafanaPassword}"
+
+                        echo "Prometheus is accessible at: http://localhost:9090"
+                        echo "Grafana is accessible at: http://localhost:3000"
+
                     } catch (err) {
                         echo "Error setting up monitoring: ${err}"
                         currentBuild.result = 'FAILURE'
