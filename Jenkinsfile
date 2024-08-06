@@ -8,12 +8,58 @@ pipeline {
 
     stages {
 
+        stage('Create .env File') {
+            steps {
+                script {
+                    echo 'Creating .env File...'
+                    try {
+                        withCredentials([string(credentialsId: 'db_credentials', variable: 'DB_CREDENTIALS')]) {
+                            def envVariables = DB_CREDENTIALS.split(' ')
+                            def envContent = envVariables.join('\n')
+                            writeFile file: 'src/.env', text: envContent
+                        }
+                        echo '.env File created successfully.'
+                    } catch (err) {
+                        echo "Error creating .env File: ${err}"
+                        currentBuild.result = 'FAILURE'
+                        error "Failed to create .env File."
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    def imageExists = sh(script: "docker images -q flare-bank:testing", returnStdout: true).trim()
+                    if (imageExists) {
+                        def containerIds = sh(script: "docker ps -a -q --filter ancestor=flare-bank:testing", returnStdout: true).trim()
+                        if (containerIds) {
+                            sh "docker stop ${containerIds}"
+                            sh "docker rm ${containerIds}"
+                        }
+                        sh "docker rmi -f flare-bank:testing"
+                    }
+                    sh "docker build -t flare-bank:testing ."
+                }
+            }
+        }    
+
         stage('Dockerhub Login') {
             steps {
                 sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
             }
         }
-        
+
+        stage('Dockerhub Push') {
+            steps {
+                script {
+                    sh "docker tag flare-bank:testing oussamaslimani2001/flare-bank:testing"
+                    sh "docker push oussamaslimani2001/flare-bank:testing"
+                }
+            }
+        }     
+          
         stage('Deployment') {
             steps {
                 script {
