@@ -44,7 +44,6 @@ pipeline {
             }
         }
 
-
         stage('Dockerhub Login') {
             steps {
                 sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
@@ -59,7 +58,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deployment') {
             steps {
                 script {
@@ -94,108 +93,40 @@ pipeline {
             }
         }
 
-        stage('Setup Helm') {
+        stage('Deploy Monitoring Tools') {
             steps {
                 script {
-                    echo 'Setting up Helm...'
+                    echo 'Deploying Prometheus and Grafana...'
                     try {
-                        sh 'curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash'
-                        echo 'Helm installed successfully.'
+                        sh 'kubectl apply -f prometheus.yaml'
+                        sh 'kubectl apply -f grafana.yaml'
                     } catch (err) {
-                        echo "Error installing Helm: ${err}"
+                        echo "Error deploying monitoring tools: ${err}"
                         currentBuild.result = 'FAILURE'
-                        error "Helm installation failed."
+                        error "Failed to deploy Prometheus and Grafana."
                     }
                 }
             }
         }
 
-        stage('Install Prometheus and Grafana') {
+        stage('Access Monitoring Tools') {
             steps {
                 script {
-                    echo 'Installing Prometheus and Grafana using Helm...'
+                    echo 'Fetching URLs for Prometheus and Grafana...'
                     try {
-                        sh 'helm repo add prometheus-community https://prometheus-community.github.io/helm-charts'
-                        sh 'helm repo add grafana https://grafana.github.io/helm-charts'
-                        sh 'helm repo update'
-                        sh 'kubectl create namespace monitoring || true'
-                        sh 'helm install prometheus prometheus-community/prometheus --namespace monitoring'
-                        sh 'helm install grafana grafana/grafana --namespace monitoring'
-
-                        timeout(time: 10, unit: 'MINUTES') {
-                            waitUntil {
-                                def prometheusReady = sh(script: 'kubectl get pods --namespace monitoring -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                def grafanaReady = sh(script: 'kubectl get pods --namespace monitoring -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return prometheusReady.contains('true') && grafanaReady.contains('true')
-                            }
-                        }
-                        echo 'Prometheus and Grafana installed and ready.'
+                        def prometheusUrl = sh(script: 'minikube service prometheus --url', returnStdout: true).trim()
+                        def grafanaUrl = sh(script: 'minikube service grafana --url', returnStdout: true).trim()
+                        
+                        echo "Prometheus is accessible at: ${prometheusUrl}"
+                        echo "Grafana is accessible at: ${grafanaUrl}"
                     } catch (err) {
-                        echo "Error installing Prometheus and Grafana: ${err}"
+                        echo "Error fetching URLs for Prometheus and Grafana: ${err}"
                         currentBuild.result = 'FAILURE'
-                        error "Prometheus and Grafana installation failed."
+                        error "Failed to fetch URLs for Prometheus and Grafana."
                     }
                 }
             }
         }
-
-        stage('Access Prometheus and Grafana') {
-            steps {
-                script {
-                    echo 'Setting up port forwarding for Prometheus and Grafana...'
-                    try {
-                        sh 'kubectl --namespace monitoring port-forward svc/prometheus-server 9090:80 &> /dev/null &'
-                        sh 'kubectl --namespace monitoring port-forward svc/grafana 3000:80 &> /dev/null &'
-                        echo 'Port forwarding setup. Access Prometheus at http://localhost:9090 and Grafana at http://localhost:3000'
-                    } catch (err) {
-                        echo "Error setting up port forwarding: ${err}"
-                        currentBuild.result = 'FAILURE'
-                        error "Port forwarding setup failed."
-                    }
-                }
-            }
-        }
-
-        stage('Get Grafana Admin Password') {
-            steps {
-                script {
-                    echo 'Retrieving Grafana admin password...'
-                    try {
-                        def password = sh(script: 'kubectl get secret --namespace monitoring grafana -o jsonpath="{.data.admin-password}" | base64 --decode', returnStdout: true).trim()
-                        echo "Grafana admin password: ${password}"
-                    } catch (err) {
-                        echo "Error retrieving Grafana admin password: ${err}"
-                        currentBuild.result = 'FAILURE'
-                        error "Retrieving Grafana admin password failed."
-                    }
-                }
-            }
-        }
-
-        stage('Configure Grafana Data Source') {
-            steps {
-                script {
-                    echo 'Configuring Grafana data source for Prometheus...'
-                    try {
-                        // You can use Grafana's HTTP API to configure the data source.
-                        // Here, using `curl` to post configuration. Adjust as necessary.
-
-                        sh '''
-                        curl -X POST -H "Content-Type: application/json" \
-                        -d '{"name":"Prometheus","type":"prometheus","url":"http://prometheus-server.monitoring.svc.cluster.local:80","access":"proxy","isDefault":true}' \
-                        http://admin:$(kubectl get secret --namespace monitoring grafana -o jsonpath="{.data.admin-password}" | base64 --decode)@localhost:3000/api/datasources
-                        '''
-                        echo 'Grafana data source configured.'
-                    } catch (err) {
-                        echo "Error configuring Grafana data source: ${err}"
-                        currentBuild.result = 'FAILURE'
-                        error "Grafana data source configuration failed."
-                    }
-                }
-            }
-        }
-
-
     }
 
     post {
