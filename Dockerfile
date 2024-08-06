@@ -12,7 +12,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends curl wget && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Prometheus PHP-FPM Exporter
+# Install Prometheus Apache Exporter
 RUN wget https://github.com/Lusitaniae/apache_exporter/releases/download/v0.10.1/apache_exporter-0.10.1.linux-amd64.tar.gz && \
     tar -xzf apache_exporter-0.10.1.linux-amd64.tar.gz && \
     mv apache_exporter-0.10.1.linux-amd64/apache_exporter /usr/local/bin/ && \
@@ -21,8 +21,11 @@ RUN wget https://github.com/Lusitaniae/apache_exporter/releases/download/v0.10.1
 # Copy the current directory contents into the container at /var/www/html
 COPY src/ .
 
-# Expose ports for the web application and metrics
-EXPOSE 80 9117
+# Expose port 80 for the web application
+EXPOSE 80
+
+# Expose port 9117 for the Prometheus metrics
+EXPOSE 9117
 
 # Set up environment variables from .env file
 COPY src/.env /var/www/html/src/.env
