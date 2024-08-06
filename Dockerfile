@@ -7,25 +7,22 @@ WORKDIR /var/www/html
 # Install PHP extensions
 RUN docker-php-ext-install mysqli pdo pdo_mysql
 
-# Install necessary dependencies
+# Install only necessary dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        curl \
-        git \
-        unzip && \
+    apt-get install -y --no-install-recommends curl wget && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Composer
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+# Install Prometheus PHP-FPM Exporter
+RUN wget https://github.com/Lusitaniae/apache_exporter/releases/download/v0.10.1/apache_exporter-0.10.1.linux-amd64.tar.gz && \
+    tar -xzf apache_exporter-0.10.1.linux-amd64.tar.gz && \
+    mv apache_exporter-0.10.1.linux-amd64/apache_exporter /usr/local/bin/ && \
+    rm -rf apache_exporter-0.10.1.linux-amd64*
 
 # Copy the current directory contents into the container at /var/www/html
 COPY src/ .
 
-# Install PHP dependencies with Composer
-RUN composer require promphp/prometheus_client_php
-
-# Expose port 80 for the web application
-EXPOSE 80
+# Expose ports for the web application and metrics
+EXPOSE 80 9117
 
 # Set up environment variables from .env file
 COPY src/.env /var/www/html/src/.env
@@ -40,4 +37,4 @@ RUN chown -R appuser:appgroup /var/www/html
 USER appuser
 
 # Ensure the container uses port 80 from the start
-CMD ["apache2-foreground"]
+CMD ["sh", "-c", "apache2-foreground & apache_exporter --telemetry.address=:9117 --telemetry.endpoint=/metrics"]

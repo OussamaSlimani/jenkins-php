@@ -44,7 +44,6 @@ pipeline {
             }
         }
 
-
         stage('Dockerhub Login') {
             steps {
                 sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
@@ -99,37 +98,30 @@ pipeline {
                 script {
                     echo 'Setting up monitoring with Prometheus and Grafana...'
                     try {
-                        // Create the monitoring namespace
-                        sh 'kubectl create namespace monitoring || echo "Namespace already exists"'
-
-                        // Apply Prometheus and Grafana configurations
                         sh 'kubectl apply -f prometheus-config.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-service.yaml --validate=false'
                         sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
                         sh 'kubectl apply -f grafana-service.yaml --validate=false'
 
-                        // Wait for Prometheus to be ready
                         timeout(time: 5, unit: 'MINUTES') {
                             waitUntil {
-                                def prometheusReady = sh(script: 'kubectl get pods -n monitoring -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
                                 return prometheusReady.contains('true')
                             }
                         }
                         echo 'Prometheus is ready.'
 
-                        // Wait for Grafana to be ready
                         timeout(time: 5, unit: 'MINUTES') {
                             waitUntil {
-                                def grafanaReady = sh(script: 'kubectl get pods -n monitoring -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                def grafanaReady = sh(script: 'kubectl get pods -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
                                 return grafanaReady.contains('true')
                             }
                         }
                         echo 'Grafana is ready.'
 
-                        // Get URLs for Prometheus and Grafana
-                        def prometheusUrl = sh(script: 'minikube service prometheus-service -n monitoring --url', returnStdout: true).trim()
-                        def grafanaUrl = sh(script: 'minikube service grafana-service -n monitoring --url', returnStdout: true).trim()
+                        def prometheusUrl = sh(script: 'minikube service prometheus-service --url', returnStdout: true).trim()
+                        def grafanaUrl = sh(script: 'minikube service grafana-service --url', returnStdout: true).trim()
                         echo "Prometheus is accessible at: ${prometheusUrl}"
                         echo "Grafana is accessible at: ${grafanaUrl}"
                     } catch (err) {
@@ -140,7 +132,6 @@ pipeline {
                 }
             }
         }
-
 
     }
 
