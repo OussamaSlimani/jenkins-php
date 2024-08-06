@@ -69,8 +69,13 @@ pipeline {
                         sh 'minikube start --driver=docker'
                         sh 'eval $(minikube docker-env)'       
                         sh 'docker pull oussamaslimani2001/flare-bank:testing'
-                        sh 'kubectl apply -f app-deployment.yaml --validate=false'
-                        sh 'kubectl apply -f app-service.yaml --validate=false'
+
+                        // Update Helm chart repository
+                        sh 'helm repo add my-charts https://example.com/charts'
+                        sh 'helm repo update'
+
+                        // Install or upgrade Helm chart
+                        sh 'helm upgrade --install flare-bank my-charts/flare-bank --set image.tag=testing'
 
                         timeout(time: 10, unit: 'MINUTES') {
                             waitUntil {
@@ -93,44 +98,43 @@ pipeline {
             }
         }
 
-        stage('Deploy Monitoring Tools') {
+        stage('Setup Monitoring') {
             steps {
                 script {
-                    echo 'Deploying Prometheus and Grafana...'
+                    echo 'Setting up monitoring with Prometheus and Grafana...'
                     try {
-                        sh 'kubectl apply -f prometheus.yaml'
-                        sh 'kubectl apply -f grafana.yaml'
-                    } catch (err) {
-                        echo "Error deploying monitoring tools: ${err}"
-                        currentBuild.result = 'FAILURE'
-                        error "Failed to deploy Prometheus and Grafana."
-                    }
-                }
-            }
-        }
+                        // Update Helm chart repository for monitoring tools
+                        sh 'helm repo add monitoring https://prometheus-community.github.io/helm-charts'
+                        sh 'helm repo update'
 
-        stage('Access Monitoring Tools') {
-            steps {
-                script {
-                    echo 'Setting up port forwarding for Prometheus and Grafana...'
-                    try {
-                        // Run port-forwarding in the background
-                        sh 'kubectl port-forward svc/prometheus -n monitoring 9090:9090 &'
-                        sh 'kubectl port-forward svc/grafana -n monitoring 3000:3000 &'
+                        // Install Prometheus and Grafana using Helm
+                        sh 'helm upgrade --install prometheus monitoring/prometheus'
+                        sh 'helm upgrade --install grafana monitoring/grafana'
 
-                        // Allow some time for port-forwarding to start
-                        sleep time: 60, unit: 'SECONDS'
+                        timeout(time: 5, unit: 'MINUTES') {
+                            waitUntil {
+                                def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                return prometheusReady.contains('true')
+                            }
+                        }
+                        echo 'Prometheus is ready.'
 
-                        // Fetch the URLs for Prometheus and Grafana
-                        def prometheusUrl = 'http://localhost:9090'
-                        def grafanaUrl = 'http://localhost:3000'
+                        timeout(time: 5, unit: 'MINUTES') {
+                            waitUntil {
+                                def grafanaReady = sh(script: 'kubectl get pods -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                return grafanaReady.contains('true')
+                            }
+                        }
+                        echo 'Grafana is ready.'
 
+                        def prometheusUrl = sh(script: 'minikube service prometheus-server --url', returnStdout: true).trim()
+                        def grafanaUrl = sh(script: 'minikube service grafana --url', returnStdout: true).trim()
                         echo "Prometheus is accessible at: ${prometheusUrl}"
                         echo "Grafana is accessible at: ${grafanaUrl}"
                     } catch (err) {
-                        echo "Error setting up port forwarding: ${err}"
+                        echo "Error setting up monitoring: ${err}"
                         currentBuild.result = 'FAILURE'
-                        error "Failed to set up port forwarding for Prometheus and Grafana."
+                        error "Monitoring setup failed."
                     }
                 }
             }
