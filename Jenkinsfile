@@ -112,18 +112,25 @@ pipeline {
         stage('Access Monitoring Tools') {
             steps {
                 script {
-                    echo 'Fetching URLs for Prometheus and Grafana...'
+                    echo 'Setting up port forwarding for Prometheus and Grafana...'
                     try {
-                        // Fetch URLs for Prometheus and Grafana in the monitoring namespace
-                        def prometheusUrl = sh(script: 'minikube service prometheus -n monitoring --url', returnStdout: true).trim()
-                        def grafanaUrl = sh(script: 'minikube service grafana -n monitoring --url', returnStdout: true).trim()
-                        
+                        // Run port-forwarding in the background
+                        sh 'kubectl port-forward svc/prometheus -n monitoring 9090:9090 &'
+                        sh 'kubectl port-forward svc/grafana -n monitoring 3000:3000 &'
+
+                        // Allow some time for port-forwarding to start
+                        sleep time: 60, unit: 'SECONDS'
+
+                        // Fetch the URLs for Prometheus and Grafana
+                        def prometheusUrl = 'http://localhost:9090'
+                        def grafanaUrl = 'http://localhost:3000'
+
                         echo "Prometheus is accessible at: ${prometheusUrl}"
                         echo "Grafana is accessible at: ${grafanaUrl}"
                     } catch (err) {
-                        echo "Error fetching URLs for Prometheus and Grafana: ${err}"
+                        echo "Error setting up port forwarding: ${err}"
                         currentBuild.result = 'FAILURE'
-                        error "Failed to fetch URLs for Prometheus and Grafana."
+                        error "Failed to set up port forwarding for Prometheus and Grafana."
                     }
                 }
             }
