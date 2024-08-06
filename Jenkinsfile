@@ -99,47 +99,39 @@ pipeline {
                 script {
                     echo 'Setting up monitoring with Prometheus and Grafana...'
                     try {
-                        // Ensure Minikube is running
-                        sh 'minikube start'
+                        // Create the monitoring namespace
+                        sh 'kubectl create namespace monitoring || echo "Namespace already exists"'
 
-                        // Install Helm
-                        sh 'curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash'
+                        // Apply Prometheus and Grafana configurations
+                        sh 'kubectl apply -f prometheus-config.yaml --validate=false'
+                        sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
+                        sh 'kubectl apply -f prometheus-service.yaml --validate=false'
+                        sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
+                        sh 'kubectl apply -f grafana-service.yaml --validate=false'
 
-                        // Add Prometheus and Grafana Helm repositories
-                        sh 'helm repo add prometheus-community https://prometheus-community.github.io/helm-charts'
-                        sh 'helm repo add grafana https://grafana.github.io/helm-charts'
-                        sh 'helm repo update'
-
-                        // Create namespace for monitoring
-                        sh 'kubectl create namespace monitoring'
-
-                        // Install Prometheus
-                        sh 'helm install prometheus prometheus-community/prometheus --namespace monitoring'
-
-                        // Install Grafana
-                        sh 'helm install grafana grafana/grafana --namespace monitoring'
-
-                        // Wait until Prometheus and Grafana pods are running
-                        timeout(time: 10, unit: 'MINUTES') {
+                        // Wait for Prometheus to be ready
+                        timeout(time: 5, unit: 'MINUTES') {
                             waitUntil {
-                                def prometheusReady = sh(script: 'kubectl get pods --namespace monitoring -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                def grafanaReady = sh(script: 'kubectl get pods --namespace monitoring -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return prometheusReady.contains('true') && grafanaReady.contains('true')
+                                def prometheusReady = sh(script: 'kubectl get pods -n monitoring -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                return prometheusReady.contains('true')
                             }
                         }
-                        echo 'Prometheus and Grafana are ready.'
+                        echo 'Prometheus is ready.'
 
-                        // Access Prometheus and Grafana
-                        sh 'kubectl --namespace monitoring port-forward svc/prometheus-server 9090:80 &> /dev/null &'
-                        sh 'kubectl --namespace monitoring port-forward svc/grafana 3000:80 &> /dev/null &'
+                        // Wait for Grafana to be ready
+                        timeout(time: 5, unit: 'MINUTES') {
+                            waitUntil {
+                                def grafanaReady = sh(script: 'kubectl get pods -n monitoring -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                return grafanaReady.contains('true')
+                            }
+                        }
+                        echo 'Grafana is ready.'
 
-                        // Get Grafana admin password
-                        def grafanaPassword = sh(script: 'kubectl get secret --namespace monitoring grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo', returnStdout: true).trim()
-                        echo "Grafana Admin Password: ${grafanaPassword}"
-
-                        echo "Prometheus is accessible at: http://localhost:9090"
-                        echo "Grafana is accessible at: http://localhost:3000"
-
+                        // Get URLs for Prometheus and Grafana
+                        def prometheusUrl = sh(script: 'minikube service prometheus-service -n monitoring --url', returnStdout: true).trim()
+                        def grafanaUrl = sh(script: 'minikube service grafana-service -n monitoring --url', returnStdout: true).trim()
+                        echo "Prometheus is accessible at: ${prometheusUrl}"
+                        echo "Grafana is accessible at: ${grafanaUrl}"
                     } catch (err) {
                         echo "Error setting up monitoring: ${err}"
                         currentBuild.result = 'FAILURE'
@@ -148,6 +140,8 @@ pipeline {
                 }
             }
         }
+
+
     }
 
     post {
