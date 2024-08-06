@@ -19,13 +19,3 @@ data:
         - source_labels: [__meta_kubernetes_pod_name]
           action: replace
           target_label: pod
-      - job_name: 'php-app'
-        kubernetes_sd_configs:
-          - role: endpoints
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_service_label_app]
-            action: keep
-            regex: flare-bank
-          - source_labels: [__meta_kubernetes_service_port_name]
-            action: keep
-            regex: http-metrics
