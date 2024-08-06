@@ -12,3 +12,4 @@ spec:
       nodePort: 30030
   selector:
     app: grafana
+s
