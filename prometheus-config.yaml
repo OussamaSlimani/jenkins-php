@@ -29,4 +29,3 @@ data:
           - source_labels: [__meta_kubernetes_service_port_name]
             action: keep
             regex: http-metrics
-s
