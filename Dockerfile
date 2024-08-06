@@ -7,19 +7,25 @@ WORKDIR /var/www/html
 # Install PHP extensions
 RUN docker-php-ext-install mysqli pdo pdo_mysql
 
-# Install only necessary dependencies
+# Install necessary dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        git \
+        unzip && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # Copy the current directory contents into the container at /var/www/html
 COPY src/ .
 
+# Install PHP dependencies with Composer
+RUN composer require promphp/prometheus_client_php
+
 # Expose port 80 for the web application
 EXPOSE 80
-
-# Expose port 9091 for metrics
-EXPOSE 9091
 
 # Set up environment variables from .env file
 COPY src/.env /var/www/html/src/.env
