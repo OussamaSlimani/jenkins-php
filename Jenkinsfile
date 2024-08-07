@@ -4,6 +4,10 @@ pipeline {
     environment {
         DOCKERHUB_CREDENTIALS = credentials('Dockerhub')
         DOCKER_CONTENT_TRUST = '0'
+        MINIKUBE_IP = ''
+        NODE_PORT_APP = ''
+        NODE_PORT_METRICS = ''
+        NODE_PORT_PROMETHEUS = '30090'
     }
 
     stages {
@@ -82,12 +86,12 @@ pipeline {
                         sh 'kubectl get pods -o wide'
                         sh 'kubectl logs -l app=flare-bank'
 
-                        def nodePortApp = sh(script: 'kubectl get svc flare-bank-service -o jsonpath="{.spec.ports[?(@.port==80)].nodePort}"', returnStdout: true).trim()
-                        def nodePortMetrics = sh(script: 'kubectl get svc flare-bank-service -o jsonpath="{.spec.ports[?(@.port==9117)].nodePort}"', returnStdout: true).trim()
-                        def minikubeIp = sh(script: 'minikube ip', returnStdout: true).trim()
+                        env.NODE_PORT_APP = sh(script: 'kubectl get svc flare-bank-service -o jsonpath="{.spec.ports[?(@.port==80)].nodePort}"', returnStdout: true).trim()
+                        env.NODE_PORT_METRICS = sh(script: 'kubectl get svc flare-bank-service -o jsonpath="{.spec.ports[?(@.port==9117)].nodePort}"', returnStdout: true).trim()
+                        env.MINIKUBE_IP = sh(script: 'minikube ip', returnStdout: true).trim()
 
-                        def appUrl = "http://${minikubeIp}:${nodePortApp}"
-                        def metricsUrl = "http://${minikubeIp}:${nodePortMetrics}/metrics"
+                        def appUrl = "http://${env.MINIKUBE_IP}:${env.NODE_PORT_APP}"
+                        def metricsUrl = "http://${env.MINIKUBE_IP}:${env.NODE_PORT_METRICS}/metrics"
 
                         echo "Application is accessible at: ${appUrl}"
                         echo "Metrics is accessible at: ${metricsUrl}"
@@ -99,7 +103,6 @@ pipeline {
                 }
             }
         }
-
 
         stage('Prometheus Setup') {
             steps {
@@ -120,11 +123,10 @@ pipeline {
                         sh 'kubectl get pods -o wide'
                         sh 'kubectl logs -l app=prometheus'
 
-                        def nodePortPrometheus = sh(script: 'kubectl get svc prometheus-service -o jsonpath="{.spec.ports[?(@.port==9090)].nodePort}"', returnStdout: true).trim()
-                        def prometheusUrl = "http://${minikubeIp}:${nodePortPrometheus}"
+                        def prometheusUrl = "http://${env.MINIKUBE_IP}:${env.NODE_PORT_PROMETHEUS}"
 
                         echo "Prometheus is accessible at: ${prometheusUrl}"
-                        echo "Ensure that Prometheus is configured to scrape metrics from ${metricsUrl}"
+                        echo "Ensure that Prometheus is configured to scrape metrics from http://${env.MINIKUBE_IP}:${env.NODE_PORT_METRICS}/metrics"
                     } catch (err) {
                         echo "Error setting up Prometheus: ${err}"
                         currentBuild.result = 'FAILURE'
@@ -133,53 +135,8 @@ pipeline {
                 }
             }
         }
-   
+    
 
-
-/*
-        stage('Setup Monitoring') {
-            steps {
-                script {
-                    echo 'Setting up monitoring with Prometheus and Grafana...'
-                    try {
-                        sh 'docker pull prom/prometheus:main'
-                        sh 'kubectl apply -f prometheus-config.yaml --validate=false'
-                        sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
-                        sh 'kubectl apply -f prometheus-service.yaml --validate=false'
-
-                        sh 'docker pull grafana/grafana:main'
-                        sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
-                        sh 'kubectl apply -f grafana-service.yaml --validate=false'
-
-                        timeout(time: 10, unit: 'MINUTES') {
-                            waitUntil {
-                                def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return prometheusReady.contains('true')
-                            }
-                        }
-                        echo 'Prometheus is ready.'
-
-                        timeout(time: 10, unit: 'MINUTES') {
-                            waitUntil {
-                                def grafanaReady = sh(script: 'kubectl get pods -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return grafanaReady.contains('true')
-                            }
-                        }
-                        echo 'Grafana is ready.'
-
-                        def prometheusUrl = sh(script: 'minikube service prometheus-service --url', returnStdout: true).trim()
-                        def grafanaUrl = sh(script: 'minikube service grafana-service --url', returnStdout: true).trim()
-                        echo "Prometheus is accessible at: ${prometheusUrl}"
-                        echo "Grafana is accessible at: ${grafanaUrl}"
-                    } catch (err) {
-                        echo "Error setting up monitoring: ${err}"
-                        currentBuild.result = 'FAILURE'
-                        error "Monitoring setup failed."
-                    }
-                }
-            }
-        }
-        */
 
     }
 
