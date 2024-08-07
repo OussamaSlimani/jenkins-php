@@ -59,52 +59,42 @@ pipeline {
             }
         }
         
-stage('Deployment') {
-    steps {
-        script {
-            echo 'Start deploying'
-            try {
-                echo "Deleting and recreating Minikube..."
-                sh 'minikube delete || true'
-                sh 'minikube start --driver=docker'
-                sh 'eval $(minikube docker-env)'       
-                sh 'docker pull oussamaslimani2001/flare-bank:testing'
-                sh 'kubectl apply -f app-deployment.yaml --validate=false'
-                sh 'kubectl apply -f app-service.yaml --validate=false'
+        stage('Deployment') {
+            steps {
+                script {
+                    echo 'Start deploying'
+                    try {
+                        echo "Deleting and recreating Minikube..."
+                        sh 'minikube delete || true'
+                        sh 'minikube start --driver=docker'
+                        sh 'eval $(minikube docker-env)'       
+                        sh 'docker pull oussamaslimani2001/flare-bank:testing'
+                        sh 'kubectl apply -f app-deployment.yaml --validate=false'
+                        sh 'kubectl apply -f app-service.yaml --validate=false'
 
-                timeout(time: 10, unit: 'MINUTES') {
-                    waitUntil {
-                        def podsReady = sh(script: 'kubectl get pods -l app=flare-bank -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                        return podsReady.contains('true')
+                        timeout(time: 10, unit: 'MINUTES') {
+                            waitUntil {
+                                def podsReady = sh(script: 'kubectl get pods -l app=flare-bank -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                return podsReady.contains('true')
+                            }
+                        }
+
+                        sh 'kubectl get pods -o wide'
+                        sh 'kubectl logs -l app=flare-bank'
+
+                        def appUrl = sh(script: 'minikube service flare-bank-service --url -n default', returnStdout: true).trim()
+                        def metricsUrl = sh(script: 'minikube service flare-bank-service --url -n default | sed "s/:80/:9117/"', returnStdout: true).trim()
+
+                        echo "Application is accessible at: ${appUrl} || true"
+                        echo "Metrics is accessible at: ${metricsUrl} || true"
+                    } catch (err) {
+                        echo "Error deploying to Minikube: ${err}"
+                        currentBuild.result = 'FAILURE'
+                        error "Deployment to Minikube failed."
                     }
                 }
-
-                sh 'kubectl get pods -o wide'
-                sh 'kubectl logs -l app=flare-bank'
-
-                def url = sh(script: 'minikube service flare-bank-service --url', returnStdout: true).trim()
-                echo "Application is accessible at: ${url} || true"
-
-                def podName = sh(script: 'kubectl get pods -l app=flare-bank -o jsonpath="{.items[0].metadata.name}"', returnStdout: true).trim()
-                echo "Port-forwarding to pod: ${podName}"
-                
-                // Run port-forward in the background
-                sh "kubectl port-forward ${podName} 9117:9117 &"
-                
-                // Wait a moment to ensure port-forwarding is set up
-                sleep 5
-                
-            } catch (err) {
-                echo "Error deploying to Minikube: ${err}"
-                currentBuild.result = 'FAILURE'
-                error "Deployment to Minikube failed."
-            } finally {
-                // Cleanup: kill the background port-forward process
-                sh "pkill -f 'kubectl port-forward' || true"
             }
         }
-    }
-}
 
 /*
         stage('Setup Monitoring') {
