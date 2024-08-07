@@ -8,7 +8,6 @@ pipeline {
 
     stages {
 
-/*
         stage('PHPStan Analysis') {
             steps {
                 script {
@@ -29,10 +28,11 @@ pipeline {
                         currentBuild.result = 'FAILURE'
                         error "PHPStan analysis failed."
                     }
+                    sh 'cp metrics.php src/'
                 }
             }
         }
-*/
+
         stage('SonarQube Analysis') {
             steps {
                 script {
