@@ -129,6 +129,10 @@ pipeline {
                         def grafanaNodePort = sh(script: 'kubectl get svc grafana-service -o jsonpath="{.spec.ports[0].nodePort}"', returnStdout: true).trim()
                         def minikubeIp = sh(script: 'minikube ip', returnStdout: true).trim()
 
+                        if (!prometheusNodePort || !grafanaNodePort) {
+                            error "Failed to retrieve NodePorts for Prometheus and/or Grafana services."
+                        }
+
                         def prometheusUrl = "http://${minikubeIp}:${prometheusNodePort}"
                         def grafanaUrl = "http://${minikubeIp}:${grafanaNodePort}"
 
@@ -143,6 +147,7 @@ pipeline {
                 }
             }
         }
+
 
    
 
