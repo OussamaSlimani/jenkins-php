@@ -107,7 +107,7 @@ pipeline {
                         sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
                         sh 'kubectl apply -f grafana-service.yaml --validate=false'
 
-                        timeout(time: 5, unit: 'MINUTES') {
+                        timeout(time: 10, unit: 'MINUTES') {
                             waitUntil {
                                 def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
                                 return prometheusReady.contains('true')
@@ -115,7 +115,7 @@ pipeline {
                         }
                         echo 'Prometheus is ready.'
 
-                        timeout(time: 5, unit: 'MINUTES') {
+                        timeout(time: 10, unit: 'MINUTES') {
                             waitUntil {
                                 def grafanaReady = sh(script: 'kubectl get pods -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
                                 return grafanaReady.contains('true')
