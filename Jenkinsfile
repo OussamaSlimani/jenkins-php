@@ -101,16 +101,14 @@ pipeline {
         }
 
 
-        stage('Prometheus and Grafana') {
+        stage('Prometheus') {
             steps {
                 script {
-                    echo 'Setting up monitoring with Prometheus and Grafana...'
+                    echo 'Setting up monitoring with Prometheus...'
                     try {
                         sh 'kubectl apply -f prometheus-config.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-service.yaml --validate=false'
-                        sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
-                        sh 'kubectl apply -f grafana-service.yaml --validate=false'
 
                         timeout(time: 5, unit: 'MINUTES') {
                             waitUntil {
@@ -120,18 +118,8 @@ pipeline {
                         }
                         echo 'Prometheus is ready.'
 
-                        timeout(time: 5, unit: 'MINUTES') {
-                            waitUntil {
-                                def grafanaReady = sh(script: 'kubectl get pods -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return grafanaReady.contains('true')
-                            }
-                        }
-                        echo 'Grafana is ready.'
-
                         def prometheusUrl = sh(script: 'minikube service prometheus-service --url', returnStdout: true).trim()
-                        def grafanaUrl = sh(script: 'minikube service grafana-service --url', returnStdout: true).trim()
                         echo "Prometheus is accessible at: ${prometheusUrl}"
-                        echo "Grafana is accessible at: ${grafanaUrl}"
                     } catch (err) {
                         echo "Error setting up monitoring: ${err}"
                         currentBuild.result = 'FAILURE'
