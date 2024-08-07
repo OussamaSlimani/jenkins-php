@@ -59,46 +59,81 @@ pipeline {
             }
         }
         
-stage('Deployment') {
-    steps {
-        script {
-            echo 'Start deploying'
-            try {
-                echo "Deleting and recreating Minikube..."
-                sh 'minikube delete || true'
-                sh 'minikube start --driver=docker'
-                sh 'eval $(minikube docker-env)'       
-                sh 'docker pull oussamaslimani2001/flare-bank:testing'
-                sh 'kubectl apply -f app-deployment.yaml --validate=false'
-                sh 'kubectl apply -f app-service.yaml --validate=false'
+        stage('Deployment') {
+            steps {
+                script {
+                    echo 'Start deploying'
+                    try {
+                        echo "Deleting and recreating Minikube..."
+                        sh 'minikube delete || true'
+                        sh 'minikube start --driver=docker'
+                        sh 'eval $(minikube docker-env)'       
+                        sh 'docker pull oussamaslimani2001/flare-bank:testing'
+                        sh 'kubectl apply -f app-deployment.yaml --validate=false'
+                        sh 'kubectl apply -f app-service.yaml --validate=false'
 
-                timeout(time: 10, unit: 'MINUTES') {
-                    waitUntil {
-                        def podsReady = sh(script: 'kubectl get pods -l app=flare-bank -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                        return podsReady.contains('true')
+                        timeout(time: 10, unit: 'MINUTES') {
+                            waitUntil {
+                                def podsReady = sh(script: 'kubectl get pods -l app=flare-bank -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                return podsReady.contains('true')
+                            }
+                        }
+
+                        sh 'kubectl get pods -o wide'
+                        sh 'kubectl logs -l app=flare-bank'
+
+                        def nodePortApp = sh(script: 'kubectl get svc flare-bank-service -o jsonpath="{.spec.ports[?(@.port==80)].nodePort}"', returnStdout: true).trim()
+                        def nodePortMetrics = sh(script: 'kubectl get svc flare-bank-service -o jsonpath="{.spec.ports[?(@.port==9117)].nodePort}"', returnStdout: true).trim()
+                        def minikubeIp = sh(script: 'minikube ip', returnStdout: true).trim()
+
+                        def appUrl = "http://${minikubeIp}:${nodePortApp}"
+                        def metricsUrl = "http://${minikubeIp}:${nodePortMetrics}/metrics"
+
+                        echo "Application is accessible at: ${appUrl}"
+                        echo "Metrics is accessible at: ${metricsUrl}"
+                    } catch (err) {
+                        echo "Error deploying to Minikube: ${err}"
+                        currentBuild.result = 'FAILURE'
+                        error "Deployment to Minikube failed."
                     }
                 }
+            }
+        }
 
-                sh 'kubectl get pods -o wide'
-                sh 'kubectl logs -l app=flare-bank'
 
-                def nodePortApp = sh(script: 'kubectl get svc flare-bank-service -o jsonpath="{.spec.ports[?(@.port==80)].nodePort}"', returnStdout: true).trim()
-                def nodePortMetrics = sh(script: 'kubectl get svc flare-bank-service -o jsonpath="{.spec.ports[?(@.port==9117)].nodePort}"', returnStdout: true).trim()
-                def minikubeIp = sh(script: 'minikube ip', returnStdout: true).trim()
+        stage('Prometheus Setup') {
+            steps {
+                script {
+                    echo 'Start setting up Prometheus'
+                    try {
+                        // Apply Prometheus deployment and service configuration
+                        sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
+                        sh 'kubectl apply -f prometheus-service.yaml --validate=false'
 
-                def appUrl = "http://${minikubeIp}:${nodePortApp}"
-                def metricsUrl = "http://${minikubeIp}:${nodePortMetrics}"
+                        timeout(time: 5, unit: 'MINUTES') {
+                            waitUntil {
+                                def podsReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
+                                return podsReady.contains('true')
+                            }
+                        }
 
-                echo "Application is accessible at: ${appUrl}"
-                echo "Metrics is accessible at: ${metricsUrl}"
-            } catch (err) {
-                echo "Error deploying to Minikube: ${err}"
-                currentBuild.result = 'FAILURE'
-                error "Deployment to Minikube failed."
+                        sh 'kubectl get pods -o wide'
+                        sh 'kubectl logs -l app=prometheus'
+
+                        def nodePortPrometheus = sh(script: 'kubectl get svc prometheus-service -o jsonpath="{.spec.ports[?(@.port==9090)].nodePort}"', returnStdout: true).trim()
+                        def prometheusUrl = "http://${minikubeIp}:${nodePortPrometheus}"
+
+                        echo "Prometheus is accessible at: ${prometheusUrl}"
+                        echo "Ensure that Prometheus is configured to scrape metrics from ${metricsUrl}"
+                    } catch (err) {
+                        echo "Error setting up Prometheus: ${err}"
+                        currentBuild.result = 'FAILURE'
+                        error "Prometheus setup failed."
+                    }
+                }
             }
         }
     }
-}
 
 
 /*
