@@ -15,5 +15,5 @@ spec:
       targetPort: 80
     - name: http-metrics
       protocol: TCP
-      port: 9091
+      port: 9117
       targetPort: 9117

@@ -98,9 +98,12 @@ pipeline {
                 script {
                     echo 'Setting up monitoring with Prometheus and Grafana...'
                     try {
+                        sh 'docker docker pull prom/prometheus:main'
                         sh 'kubectl apply -f prometheus-config.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-service.yaml --validate=false'
+
+                        sh 'docker docker pull grafana/grafana:main'
                         sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
                         sh 'kubectl apply -f grafana-service.yaml --validate=false'
 

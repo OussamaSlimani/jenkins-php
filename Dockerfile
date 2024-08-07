@@ -21,10 +21,8 @@ RUN wget https://github.com/Lusitaniae/apache_exporter/releases/download/v0.10.1
 # Copy the current directory contents into the container at /var/www/html
 COPY src/ .
 
-# Expose port 80 for the web application
+# Expose port 80 for the web application and port 9117 for the exporter
 EXPOSE 80
-
-# Expose port 9117 for the Prometheus metrics
 EXPOSE 9117
 
 # Set up environment variables from .env file
@@ -39,5 +37,5 @@ RUN groupadd -r appgroup && useradd -r -g appgroup -d /home/appuser -s /bin/bash
 RUN chown -R appuser:appgroup /var/www/html
 USER appuser
 
-# Ensure the container uses port 80 from the start
+# Start Apache and Apache Exporter
 CMD ["sh", "-c", "apache2-foreground & apache_exporter --telemetry.address=:9117 --telemetry.endpoint=/metrics"]

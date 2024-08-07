@@ -16,9 +16,9 @@ spec:
     spec:
       containers:
         - name: prometheus
-          image: prom/prometheus:v2.37.0
+          image: prom/prometheus:main
           args:
-            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--config.file=prometheus.yml"
           ports:
             - name: web
               containerPort: 9090
