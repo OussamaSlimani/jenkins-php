@@ -7,6 +7,88 @@ pipeline {
     }
 
     stages {
+
+        stage('PHPStan Analysis') {
+            steps {
+                script {
+                    echo 'Preparing environment for PHPStan...'
+                    sh 'composer require --dev phpstan/phpstan'
+                    sh 'mkdir -p tmp-phpstan/cache'
+                    sh 'chmod -R 777 tmp-phpstan'
+                    writeFile file: 'phpstan.neon', text: '''
+                    parameters:
+                        tmpDir: tmp-phpstan/cache
+                    '''
+                    echo 'Running PHPStan Analysis...'
+                    try {
+                        sh 'vendor/bin/phpstan analyse -l 1 src/'
+                        echo 'PHPStan Analysis completed successfully.'
+                    } catch (err) {
+                        echo "PHPStan analysis encountered errors: ${err}"
+                        currentBuild.result = 'FAILURE'
+                        error "PHPStan analysis failed."
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    echo 'Running SonarQube Analysis...'
+                    try {
+                        def scannerHome = tool name: 'SonarQube Scanner 6.0.0.4432'
+                        withSonarQubeEnv('sonarqube') {
+                            sh "${scannerHome}/bin/sonar-scanner"
+                        }
+                        echo 'SonarQube Analysis completed successfully.'
+                    } catch (err) {
+                        echo "SonarQube analysis encountered errors: ${err}"
+                        currentBuild.result = 'FAILURE'
+                        error "SonarQube analysis failed."
+                    }
+                }
+            }
+        }
+        
+        stage('Quality Gate') {
+            steps {
+                script {
+                    echo 'Waiting for Quality Gate...'
+                    try {
+                        timeout(time: 2, unit: 'MINUTES') {
+                            waitForQualityGate abortPipeline: true
+                            echo 'Quality Gate passed.'
+                        }
+                    } catch (err) {
+                        echo "Quality Gate check failed: ${err}"
+                        currentBuild.result = 'FAILURE'
+                        error "Quality Gate check failed."
+                    }
+                }
+            }
+        }
+
+        stage('Lint Dockerfile hadolint') {
+            steps {
+                script {
+                    echo 'Linting Dockerfile...'
+                    try {
+                        def hadolintOutput = sh(returnStdout: true, script: 'hadolint --config hadolint.yaml Dockerfile || true').trim()
+                        if (hadolintOutput) {
+                            error "Dockerfile linting failed:\n${hadolintOutput}"
+                        } else {
+                            echo 'Dockerfile linting passed.'
+                        }
+                    } catch (err) {
+                        echo "Error during Dockerfile linting: ${err}"
+                        currentBuild.result = 'FAILURE'
+                        error "Dockerfile linting failed."
+                    }
+                }
+            }
+        }
+
         stage('Create .env File') {
             steps {
                 script {
@@ -44,6 +126,22 @@ pipeline {
             }
         }
 
+        stage('Dockle Docker Image Test') {
+            steps {
+                script {
+                    sh "dockle flare-bank:testing || true"
+                }
+            }
+        }
+
+        stage('Test Security Trivy') {
+            steps {
+                script {
+                    sh "trivy image --severity CRITICAL flare-bank:testing || true"
+                }
+            }
+        }
+
         stage('Dockerhub Login') {
             steps {
                 sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
@@ -59,7 +157,7 @@ pipeline {
             }
         }
         
-        stage('Deployment') {
+       stage('Deployment') {
             steps {
                 script {
                     echo 'Start deploying'
@@ -106,16 +204,12 @@ pipeline {
                 script {
                     echo 'Setting up Prometheus and Grafana'
                     try {
-                        // Deploy Prometheus
                         sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-configmap.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-service.yaml --validate=false'
-
-                        // Deploy Grafana
                         sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
                         sh 'kubectl apply -f grafana-service.yaml --validate=false'
 
-                        // Wait for Prometheus and Grafana to be ready
                         timeout(time: 10, unit: 'MINUTES') {
                             waitUntil {
                                 def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.phase}"', returnStdout: true).trim()
@@ -124,7 +218,6 @@ pipeline {
                             }
                         }
 
-                        // Get URLs for Prometheus and Grafana
                         def prometheusNodePort = sh(script: 'kubectl get svc prometheus-service -o jsonpath="{.spec.ports[0].nodePort}"', returnStdout: true).trim()
                         def grafanaNodePort = sh(script: 'kubectl get svc grafana-service -o jsonpath="{.spec.ports[0].nodePort}"', returnStdout: true).trim()
                         def minikubeIp = sh(script: 'minikube ip', returnStdout: true).trim()
@@ -148,54 +241,6 @@ pipeline {
             }
         }
 
-
-   
-
-
-/*
-        stage('Setup Monitoring') {
-            steps {
-                script {
-                    echo 'Setting up monitoring with Prometheus and Grafana...'
-                    try {
-                        sh 'docker pull prom/prometheus:main'
-                        sh 'kubectl apply -f prometheus-config.yaml --validate=false'
-                        sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
-                        sh 'kubectl apply -f prometheus-service.yaml --validate=false'
-
-                        sh 'docker pull grafana/grafana:main'
-                        sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
-                        sh 'kubectl apply -f grafana-service.yaml --validate=false'
-
-                        timeout(time: 10, unit: 'MINUTES') {
-                            waitUntil {
-                                def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return prometheusReady.contains('true')
-                            }
-                        }
-                        echo 'Prometheus is ready.'
-
-                        timeout(time: 10, unit: 'MINUTES') {
-                            waitUntil {
-                                def grafanaReady = sh(script: 'kubectl get pods -l app=grafana -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return grafanaReady.contains('true')
-                            }
-                        }
-                        echo 'Grafana is ready.'
-
-                        def prometheusUrl = sh(script: 'minikube service prometheus-service --url', returnStdout: true).trim()
-                        def grafanaUrl = sh(script: 'minikube service grafana-service --url', returnStdout: true).trim()
-                        echo "Prometheus is accessible at: ${prometheusUrl}"
-                        echo "Grafana is accessible at: ${grafanaUrl}"
-                    } catch (err) {
-                        echo "Error setting up monitoring: ${err}"
-                        currentBuild.result = 'FAILURE'
-                        error "Monitoring setup failed."
-                    }
-                }
-            }
-        }
-        */
 
     }
 
