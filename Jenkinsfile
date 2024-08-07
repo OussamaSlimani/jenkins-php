@@ -101,33 +101,49 @@ pipeline {
         }
 
 
-        stage('Prometheus') {
+        stage('Monitoring Setup') {
             steps {
                 script {
-                    echo 'Setting up monitoring with Prometheus...'
+                    echo 'Setting up Prometheus and Grafana'
                     try {
-                        sh 'kubectl apply -f prometheus-config.yaml --validate=false'
+                        // Deploy Prometheus
                         sh 'kubectl apply -f prometheus-deployment.yaml --validate=false'
+                        sh 'kubectl apply -f prometheus-configmap.yaml --validate=false'
                         sh 'kubectl apply -f prometheus-service.yaml --validate=false'
 
-                        timeout(time: 5, unit: 'MINUTES') {
+                        // Deploy Grafana
+                        sh 'kubectl apply -f grafana-deployment.yaml --validate=false'
+                        sh 'kubectl apply -f grafana-service.yaml --validate=false'
+
+                        // Wait for Prometheus and Grafana to be ready
+                        timeout(time: 10, unit: 'MINUTES') {
                             waitUntil {
-                                def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.containerStatuses[*].ready}"', returnStdout: true).trim()
-                                return prometheusReady.contains('true')
+                                def prometheusReady = sh(script: 'kubectl get pods -l app=prometheus -o jsonpath="{.items[*].status.phase}"', returnStdout: true).trim()
+                                def grafanaReady = sh(script: 'kubectl get pods -l app=grafana -o jsonpath="{.items[*].status.phase}"', returnStdout: true).trim()
+                                return prometheusReady.contains('Running') && grafanaReady.contains('Running')
                             }
                         }
-                        echo 'Prometheus is ready.'
 
-                        def prometheusUrl = sh(script: 'minikube service prometheus-service --url', returnStdout: true).trim()
+                        // Get URLs for Prometheus and Grafana
+                        def prometheusNodePort = sh(script: 'kubectl get svc prometheus-service -o jsonpath="{.spec.ports[0].nodePort}"', returnStdout: true).trim()
+                        def grafanaNodePort = sh(script: 'kubectl get svc grafana-service -o jsonpath="{.spec.ports[0].nodePort}"', returnStdout: true).trim()
+                        def minikubeIp = sh(script: 'minikube ip', returnStdout: true).trim()
+
+                        def prometheusUrl = "http://${minikubeIp}:${prometheusNodePort}"
+                        def grafanaUrl = "http://${minikubeIp}:${grafanaNodePort}"
+
                         echo "Prometheus is accessible at: ${prometheusUrl}"
+                        echo "Grafana is accessible at: ${grafanaUrl}"
+
                     } catch (err) {
-                        echo "Error setting up monitoring: ${err}"
+                        echo "Error setting up Prometheus and Grafana: ${err}"
                         currentBuild.result = 'FAILURE'
-                        error "Monitoring setup failed."
+                        error "Setup of Prometheus and Grafana failed."
                     }
                 }
             }
         }
+
    
 
 
