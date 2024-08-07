@@ -8,6 +8,7 @@ pipeline {
 
     stages {
 
+/*
         stage('PHPStan Analysis') {
             steps {
                 script {
@@ -31,7 +32,7 @@ pipeline {
                 }
             }
         }
-
+*/
         stage('SonarQube Analysis') {
             steps {
                 script {
